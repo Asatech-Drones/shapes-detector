@@ -10,7 +10,13 @@ def identify_shape(approx):
         return "Retangulo/Quadrado"
     elif sides == 5:
         return "Pentagono"
-    elif sides > 5:
+    elif sides == 6:
+      return "Hexagono"
+    elif sides == 10:
+      return "Estrela"
+    elif sides == 12:
+      return "Cruz"
+    elif sides > 12:
         return "Circulo"
     return "Desconhecido"
 
@@ -63,9 +69,14 @@ def computeTracking(frame, hue, sat, val):
     
     #encontra pontos que circundam regiões conexas (contour)
     contours, hierarchy = cv2.findContours(gray, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Filtra contornos pequenos
+    min_area = 500  # Ajuste conforme necessário
+    contours = [c for c in contours if cv2.contourArea(c) > min_area]
     
     #se existir contornos 
     maxArea = 0.0   
+    cntMaxArea = None
     if contours:
         #retornando a área do primeiro grupo de pixels brancos
         maxArea = cv2.contourArea(contours[0])
@@ -85,28 +96,11 @@ def computeTracking(frame, hue, sat, val):
           0.02 * cv2.arcLength(contours[contourMaxAreaId], True), 
           True
         )
-        shape = identify_shape(approx)
             
         #achei o contorno com maior área em pixels
         cntMaxArea = contours[contourMaxAreaId]
-        
-        #retorna um retângulo que envolve o contorno em questão
-        xRect, yRect, wRect, hRect = cv2.boundingRect(cntMaxArea)
-        
-        #desenha caixa envolvente com espessura 3
-        cv2.rectangle(
-          frame, (xRect, yRect), 
-          (xRect + wRect, yRect + hRect), 
-          (0, 0, 255), 2
-        )
-        cv2.putText(
-          frame, shape, 
-          (xRect, yRect - 10), 
-          cv2.FONT_HERSHEY_SIMPLEX, 
-          0.6, (0, 0, 255), 2
-        )
     
-    return frame, gray, maxArea
+    return frame, gray, maxArea, cntMaxArea
 
 # Definir faixa de cores HSV para segmentação
 # Triângulo: 101, 95, 179
@@ -195,6 +189,8 @@ min_val = cv2.getTrackbarPos("Min Value", trackbarWindow)
 max_val = cv2.getTrackbarPos("Max Value", trackbarWindow)
 
 
+debug = False
+
 cap = cv2.VideoCapture(0)
 # Cria uma única janela nomeada antes do loop
 cv2.namedWindow('Segmentação', cv2.WINDOW_NORMAL)
@@ -208,16 +204,43 @@ while True:
     allMaxArea = 0.0
     allFrame = None
     allGray = None
-    for i in range(2):
-      setTrackbarValues(values[i])
-    
+    allIndex = 0
+    allCntMaxArea = None
+
+    if debug:
       hue, sat, val = setLimitsOfTrackbar()
       frame, gray, maxArea = computeTracking(frame, hue, sat, val)
 
-      if allMaxArea <= maxArea:
-        allMaxArea = maxArea
-        allFrame = frame
-        allGray = gray
+    else:
+      for i in range(len(values[:2])):
+        setTrackbarValues(values[i])
+      
+        hue, sat, val = setLimitsOfTrackbar()
+        frame, gray, maxArea, cntMaxArea = computeTracking(frame, hue, sat, val)
+
+        if allMaxArea <= maxArea:
+          allMaxArea = maxArea
+
+          allFrame = frame
+          allGray = gray
+          allIndex = i
+          allCntMaxArea = cntMaxArea
+
+      #retorna um retângulo que envolve o contorno em questão
+      xRect, yRect, wRect, hRect = cv2.boundingRect(allCntMaxArea)
+
+      #desenha caixa envolvente com espessura 3
+      cv2.rectangle(
+        allFrame, (xRect, yRect), 
+        (xRect + wRect, yRect + hRect), 
+        (0, 0, 255), 2
+      )
+      cv2.putText(
+        allFrame, f"Index: {allIndex}", 
+        (xRect, yRect - 10), 
+        cv2.FONT_HERSHEY_SIMPLEX, 
+        0.6, (0, 0, 255), 2
+      )
     
     cv2.imshow("Segmentação", allGray)
     cv2.imshow("Detecção de Formas", allFrame)
