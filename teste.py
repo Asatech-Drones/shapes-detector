@@ -1,19 +1,122 @@
+import numpy as np
 import cv2
 
-# Inicializa a captura de vídeo da webcam (0 é o índice da câmera padrão)
+ESC_KEY = 27
+
 cap = cv2.VideoCapture(0)
 
+def setLimitsOfTrackbar():
+    hue = {}
+    hue["min"] = cv2.getTrackbarPos("Min Hue", trackbarWindow)
+    hue["max"] = cv2.getTrackbarPos("Max Hue", trackbarWindow)
+    
+    if hue["min"] > hue["max"]:
+        cv2.setTrackbarPos("Max Hue", trackbarWindow, hue["min"])
+        hue["max"] = cv2.getTrackbarPos("Max Hue", trackbarWindow)
+    
+    sat = {}
+    sat["min"] = cv2.getTrackbarPos("Min Saturation", trackbarWindow)
+    sat["max"] = cv2.getTrackbarPos("Max Saturation", trackbarWindow)
+    
+    if sat["min"] > sat["max"]:
+        cv2.setTrackbarPos("Max Saturation", trackbarWindow, sat["min"])
+        sat["max"] = cv2.getTrackbarPos("Max Saturation", trackbarWindow)
+
+    val = {}
+    val["min"] = cv2.getTrackbarPos("Min Value", trackbarWindow)
+    val["max"] = cv2.getTrackbarPos("Max Value", trackbarWindow)
+    
+    if val["min"] > val["max"]:
+        cv2.setTrackbarPos("Max Value", trackbarWindow, val["min"])
+        val["max"] = cv2.getTrackbarPos("Max Value", trackbarWindow)
+        
+    return hue, sat, val
+
+def computeTracking(frame, hue, sat, val):
+    
+    #transforma a imagem de RGB para HSV
+    hsvImage = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    
+    #definir os intervalos de cores que vão aparecer na imagem final
+    lowerColor = np.array([hue['min'], sat["min"], val["min"]])
+    upperColor = np.array([hue['max'], sat["max"], val["max"]])
+    
+    #marcador pra saber se o pixel pertence ao intervalo ou não
+    mask = cv2.inRange(hsvImage, lowerColor, upperColor)
+    
+    #aplica máscara que "deixa passar" pixels pertencentes ao intervalo, como filtro
+    result = cv2.bitwise_and(frame, frame, mask = mask)
+    
+    #aplica limiarização
+    gray = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
+    _,gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    
+    #encontra pontos que circundam regiões conexas (contour)
+    contours, hierarchy = cv2.findContours(gray, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    
+    #se existir contornos    
+    if contours:
+        #retornando a área do primeiro grupo de pixels brancos
+        maxArea = cv2.contourArea(contours[0])
+        contourMaxAreaId = 0
+        i = 0
+        
+        #para cada grupo de pixels branco
+        for cnt in contours:
+            #procura o grupo com a maior área
+            if maxArea < cv2.contourArea(cnt):
+                maxArea = cv2.contourArea(cnt)
+                contourMaxAreaId = i
+            i += 1
+            
+        #achei o contorno com maior área em pixels
+        cntMaxArea = contours[contourMaxAreaId]
+        
+        #retorna um retângulo que envolve o contorno em questão
+        xRect, yRect, wRect, hRect = cv2.boundingRect(cntMaxArea)
+        
+        #desenha caixa envolvente com espessura 3
+        cv2.rectangle(frame, (xRect, yRect), (xRect + wRect, yRect + hRect), (0, 0, 255), 2)
+    
+    return frame, gray
+
+trackbarWindow = "trackbar window"
+cv2.namedWindow(trackbarWindow)
+
+def onChange(val):
+    return
+
+cv2.createTrackbar("Min Hue", trackbarWindow, 0, 255, onChange)
+cv2.createTrackbar("Max Hue", trackbarWindow, 255, 255, onChange)
+
+cv2.createTrackbar("Min Saturation", trackbarWindow, 0, 255, onChange)
+cv2.createTrackbar("Max Saturation", trackbarWindow, 255, 255, onChange)
+
+cv2.createTrackbar("Min Value", trackbarWindow, 0, 255, onChange)
+cv2.createTrackbar("Max Value", trackbarWindow, 255, 255, onChange)
+
+min_hue = cv2.getTrackbarPos("Min Hue", trackbarWindow)
+max_hue = cv2.getTrackbarPos("Max Hue", trackbarWindow)
+
+min_sat = cv2.getTrackbarPos("Min Saturation", trackbarWindow)
+max_sat = cv2.getTrackbarPos("Max Saturation", trackbarWindow)
+
+min_val = cv2.getTrackbarPos("Min Value", trackbarWindow)
+max_val = cv2.getTrackbarPos("Max Value", trackbarWindow)
+
 while True:
-    # Captura frame por frame
-    ret, frame = cap.read()
-
-    # Exibe o frame em uma janela
-    cv2.imshow('Webcam', frame)
-
-    # Aguarda 1ms e verifica se a tecla 'q' foi pressionada para sair
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    success, frame = cap.read()
+    if not success:
         break
+    
+    hue, sat, val = setLimitsOfTrackbar()
+    frame, gray = computeTracking(frame, hue, sat, val)
 
-# Libera a captura e fecha todas as janelas
+    cv2.imshow("mascara", gray)
+    cv2.imshow("webcam", frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q') or 0xFF == ESC_KEY:
+        break
+        
 cap.release()
 cv2.destroyAllWindows()
