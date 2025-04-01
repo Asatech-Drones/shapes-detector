@@ -103,55 +103,65 @@ def computeTracking(frame, hue, sat, val):
     return frame, gray, maxArea, cntMaxArea
 
 # Definir faixa de cores HSV para segmentação
-# Triângulo: 101, 95, 179
-# Círculo: 88, 77, 230
-# Estrela: 40, 60, 157
-# Hexagono: 0, 143, 208
-# Quadrado: 98, 20, 23
-# Casa: 0, 121, 153
-# Cruz: 133, 43, 168
-# Pentagono: 133, 105, 67
 
+name_values = [
+  "Triangulo",
+  "Circulo",
+  "Estrela",
+  "Hexagono",
+  "Quadrado",
+  "Casa",
+  "Cruz",
+  "Pentagono"
+]
 values = [
+  # 0 Triângulo: 101, 95, 179
   {
     "hue_min": 82, "hue_max": 143, 
     "sat_min": 103, "sat_max": 255, 
     "val_min": 72, "val_max": 171
   },
+  # 1 Círculo: 88, 77, 230
   {
-    "hue_min": 88, "hue_max": 255, 
-    "sat_min": 77, "sat_max": 255, 
-    "val_min": 230, "val_max": 255
+    "hue_min": 88, "hue_max": 134, 
+    "sat_min": 237, "sat_max": 255, 
+    "val_min": 207, "val_max": 255
   },
+  # 2 Estrela: 40, 60, 157
   {
-    "hue_min": 40, "hue_max": 255, 
-    "sat_min": 60, "sat_max": 255, 
-    "val_min": 157, "val_max": 255
+    "hue_min": 46, "hue_max": 97, 
+    "sat_min": 39, "sat_max": 174, 
+    "val_min": 72, "val_max": 157
   },
+  # 3 Hexagono: 0, 143, 208
   {
-    "hue_min": 0, "hue_max": 255, 
-    "sat_min": 143, "sat_max": 255, 
-    "val_min": 208, "val_max": 255
+    "hue_min": 118, "hue_max": 191, 
+    "sat_min": 113, "sat_max": 255, 
+    "val_min": 82, "val_max": 255
   },
+  # 4 Quadrado: 98, 20, 23
   {
-    "hue_min": 98, "hue_max": 255, 
-    "sat_min": 20, "sat_max": 255, 
-    "val_min": 23, "val_max": 255
+    "hue_min": 101, "hue_max": 137, 
+    "sat_min": 46, "sat_max": 131, 
+    "val_min": 44, "val_max": 122
   },
+  # 5 Casa: 0, 121, 153
   {
-    "hue_min": 0, "hue_max": 255, 
-    "sat_min": 121, "sat_max": 255, 
-    "val_min": 153, "val_max": 255
+    "hue_min": 123, "hue_max": 181, 
+    "sat_min": 74, "sat_max": 207, 
+    "val_min": 95, "val_max": 193
   },
+  # 6 Cruz: 133, 43, 168
   {
-    "hue_min": 133, "hue_max": 255, 
-    "sat_min": 43, "sat_max": 255, 
-    "val_min": 168, "val_max": 255
+    "hue_min": 141, "hue_max": 184, 
+    "sat_min": 26, "sat_max": 189, 
+    "val_min": 136, "val_max": 255
   },
+  # 7 Pentagono: 133, 105, 67
   {
-    "hue_min": 133, "hue_max": 255, 
-    "sat_min": 105, "sat_max": 255, 
-    "val_min": 67, "val_max": 255
+    "hue_min": 123, "hue_max": 181, 
+    "sat_min": 74, "sat_max": 207, 
+    "val_min": 95, "val_max": 193
   },
 ]
 
@@ -209,10 +219,13 @@ while True:
 
     if debug:
       hue, sat, val = setLimitsOfTrackbar()
-      frame, gray, maxArea = computeTracking(frame, hue, sat, val)
+      frame, gray, maxArea, cntMaxArea = computeTracking(frame, hue, sat, val)
+
+      allGray = gray
+      allFrame = frame
 
     else:
-      for i in range(len(values[:2])):
+      for i in range(len(values)):
         setTrackbarValues(values[i])
       
         hue, sat, val = setLimitsOfTrackbar()
@@ -236,7 +249,7 @@ while True:
         (0, 0, 255), 2
       )
       cv2.putText(
-        allFrame, f"Index: {allIndex}", 
+        allFrame, name_values[allIndex], 
         (xRect, yRect - 10), 
         cv2.FONT_HERSHEY_SIMPLEX, 
         0.6, (0, 0, 255), 2
