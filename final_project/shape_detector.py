@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import time
+
 def identify_shape(approx):
     sides = len(approx)
     if sides == 3:
@@ -18,7 +19,6 @@ def identify_shape(approx):
     elif sides > 12:
         return "Circulo"
     return "Desconhecido"
-
 
 def setLimitsOfTrackbar():
     hue = {}
@@ -271,15 +271,7 @@ def detect_shape(frame):
     cv2.imshow("Detecção de Formas", allFrame)
 
     return xRect, yRect, wRect, hRect
-    
-while True:
-  success, frame = cap.read()
-  if not success:
-    break
-  xRect, yRect, wRect, hRect = detect_shape(frame)
 
-  if cv2.waitKey(1) & 0xFF == ord('q'):
-    break
-
-cap.release()
-cv2.destroyAllWindows()
+def destroy_windows():
+  cap.release()
+  cv2.destroyAllWindows()

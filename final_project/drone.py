@@ -3,7 +3,7 @@ import random
 from mavsdk import System
 import cv2
 
-from shape_detector import cap, detect_shape
+from shape_detector import cap, detect_shape, destroy_windows
 
 # Definições de tolerância para centralização no frame
 TOLERANCE = 10  # Pixels
@@ -14,16 +14,21 @@ drone = System()
 
 async def connect_drone():
     """ Conecta ao drone e realiza a decolagem. """
-    await drone.connect(system_address="udp://:14550")
-    print("Conectando ao drone...")
-    await asyncio.sleep(2)
+    await drone.connect(system_address="udp://:14540")
 
+    print("Esperando conexão com o drone...")
+    async for state in drone.core.connection_state():
+        if state.is_connected:
+            print("Drone conectado!")
+            break
+    print("Armando drone...")
     await drone.action.arm()
+    print("Decolando...")
     await drone.action.takeoff()
     print("Decolagem concluída...")
 
     # Tempo para estabilizar
-    await asyncio.sleep(5)
+    await asyncio.sleep(15)
 
 async def detect_figure():
     """ Simula a detecção da figura no frame da câmera. Retorna (cx, cy). """
@@ -67,6 +72,8 @@ async def move_to_target(cx, cy, frame_width, frame_height):
     if moved:
         print(f"Movendo para: {latitude}, {longitude}")
         await drone.action.goto_location(latitude, longitude, altitude, 0)
+        # # Tempo para estabilizar
+        # await asyncio.sleep(15)
 
     # Retorna True se centralizado
     return abs(x_offset) < TOLERANCE and abs(y_offset) < TOLERANCE
@@ -77,11 +84,13 @@ async def land_drone():
     await drone.action.land()
 
 async def main():
-    """ Fluxo principal do sistema de navegação autônoma. """
+    # """ Fluxo principal do sistema de navegação autônoma. """
     await connect_drone()
 
     while True:
         success, frame = cap.read()
+        if not success:
+            break
         xRect, yRect, wRect, hRect = detect_shape(frame)
 
         cx = xRect + wRect / 2
@@ -98,7 +107,11 @@ async def main():
 
         if centralizado:
             await land_drone()
-            break  # Fim da missão
+            break
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
 # Executa a lógica assíncrona
 asyncio.run(main())
+destroy_windows()
