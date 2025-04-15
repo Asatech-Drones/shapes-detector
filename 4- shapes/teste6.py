@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-import time
 
 def identify_shape(approx):
     sides = len(approx)
@@ -255,6 +254,8 @@ while True:
 
       #retorna um retângulo que envolve o contorno em questão
       xRect, yRect, wRect, hRect = cv2.boundingRect(allCntMaxArea)
+
+      print(f"{xRect},{yRect},{wRect},{hRect}")
 
       #desenha caixa envolvente com espessura 3
       cv2.rectangle(
