@@ -108,8 +108,10 @@ def computeTracking(frame, hue, sat, val):
     
     return frame, gray, maxArea, cntMaxArea, vertices
 
-# Definir faixa de cores HSV para segmentação
+origin = "Triangulo"
+destiny = "Circulo"
 
+# Definir faixa de cores HSV para segmentação
 name_values = [
   "Triangulo",
   "Circulo",
@@ -120,6 +122,12 @@ name_values = [
   "Cruz",
   "Pentagono"
 ]
+
+index_values = -1
+for i in range(len(name_values)):
+  if(name_values[i] == destiny):
+    index_values = i
+
 values = [
   # 0 Triângulo: 101, 95, 179
   {
@@ -221,52 +229,40 @@ def detect_shape(frame):
     allCntMaxArea = None
     allVertices = 0
 
-    if debug:
-      hue, sat, val = setLimitsOfTrackbar()
-      frame, gray, maxArea, cntMaxArea, vertices = computeTracking(
-        frame, hue, sat, val
-      )
+    setTrackbarValues(values[index_values])
+    
+    hue, sat, val = setLimitsOfTrackbar()
+    frame, gray, maxArea, cntMaxArea, vertices = computeTracking(
+      frame, hue, sat, val
+    )
 
-      allGray = gray
+    if allMaxArea <= maxArea:
+      allMaxArea = maxArea
+
       allFrame = frame
+      allGray = gray
+      allIndex = index_values
+      allCntMaxArea = cntMaxArea
       allVertices = vertices
 
-    else:
-      for i in range(len(values)):
-        setTrackbarValues(values[i])
-      
-        hue, sat, val = setLimitsOfTrackbar()
-        frame, gray, maxArea, cntMaxArea, vertices = computeTracking(
-          frame, hue, sat, val
-        )
+    #retorna um retângulo que envolve o contorno em questão
+    xRect, yRect, wRect, hRect = cv2.boundingRect(allCntMaxArea)
 
-        if allMaxArea <= maxArea:
-          allMaxArea = maxArea
+    print(f"{xRect},{yRect},{wRect},{hRect}")
 
-          allFrame = frame
-          allGray = gray
-          allIndex = i
-          allCntMaxArea = cntMaxArea
-          allVertices = vertices
-
-      #retorna um retângulo que envolve o contorno em questão
-      xRect, yRect, wRect, hRect = cv2.boundingRect(allCntMaxArea)
-
-      print(f"{xRect},{yRect},{wRect},{hRect}")
-
-      #desenha caixa envolvente com espessura 3
-      cv2.rectangle(
-        allFrame, (xRect, yRect), 
-        (xRect + wRect, yRect + hRect), 
-        (0, 0, 255), 2
-      )
-      cv2.putText(
-        allFrame, f"{name_values[allIndex]} - vertices: {allVertices}", 
-        (xRect, yRect - 10), 
-        cv2.FONT_HERSHEY_SIMPLEX, 
-        0.6, (0, 0, 255), 2
-      )
-    
+    #desenha caixa envolvente com espessura 3
+    cv2.rectangle(
+      allFrame, (xRect, yRect), 
+      (xRect + wRect, yRect + hRect), 
+      (0, 0, 255), 2
+    )
+    cv2.putText(
+      allFrame, f"{name_values[allIndex]} - vertices: {allVertices}", 
+      (xRect, yRect - 10), 
+      cv2.FONT_HERSHEY_SIMPLEX, 
+      0.6, (0, 0, 255), 2
+    )
+  
     cv2.imshow("Segmentação", allGray)
     cv2.imshow("Detecção de Formas", allFrame)
 
