@@ -2,58 +2,66 @@ import cv2
 import numpy as np
 
 def process_frame(frame):
-    # Converter o frame para o espaço de cor HSV
+    # Converter para HSV
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-    # Definir os limites inferior e superior para a cor vermelha
-    # Note que o vermelho pode ser segmentado em duas faixas no espaço HSV
+    # Faixas da cor vermelha no HSV
     lower_red1 = np.array([0, 70, 50])
     upper_red1 = np.array([10, 255, 255])
     lower_red2 = np.array([170, 70, 50])
     upper_red2 = np.array([180, 255, 255])
 
-    # Criar as máscaras para as duas faixas
+    # Máscara para vermelho
     mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
     mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
     mask = cv2.bitwise_or(mask1, mask2)
 
-    # Redução de ruído com operações morfológicas
+    # Redução de ruído
     kernel = np.ones((5, 5), np.uint8)
-    mask = cv2.erode(mask, kernel, iterations=1)
-    mask = cv2.dilate(mask, kernel, iterations=2)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
 
-    # Encontrar contornos nas áreas detectadas
+    # Contornos
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Percorrer cada contorno e desenhar retângulo se a área for significativa
     for cnt in contours:
         area = cv2.contourArea(cnt)
-        if area > 100:  # filtro para descartar pequenas regiões de ruído
+        if area > 200:  # Ajuste conforme necessidade
             x, y, w, h = cv2.boundingRect(cnt)
-            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-            cv2.putText(frame, "Haste", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-    
+
+            # Análise do formato da bounding box
+            aspect_ratio = h / float(w) if w != 0 else 0
+
+            
+
+            # Considera como haste se for estreito e comprido
+            if aspect_ratio > 2.5:
+                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+                cv2.putText(frame, f"Haste ({aspect_ratio:.1f})", (x, y-10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
     return frame, mask
 
 def main():
-    # Inicializa a captura de vídeo (0 para webcam ou substitua por outra fonte)
     cap = cv2.VideoCapture(0)
-    
+
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        # Processa o frame para detectar a cor vermelha
         processed_frame, mask = process_frame(frame)
 
-        # Exibe o frame processado e a máscara
         cv2.imshow("Deteccao de Haste", processed_frame)
         cv2.imshow("Mascara", mask)
 
-        # Sai do loop quando 'q' é pressionado
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
             break
+        elif key == ord('s'):
+            # Salvar frame se necessário para debugging
+            cv2.imwrite("frame_salvo.png", frame)
+            cv2.imwrite("mascara_salva.png", mask)
+            print("Frame salvo.")
 
     cap.release()
     cv2.destroyAllWindows()
