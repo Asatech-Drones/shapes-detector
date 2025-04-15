@@ -1,3 +1,5 @@
+import os
+os.environ["QT_QPA_PLATFORM"] = "xcb"
 import cv2
 import numpy as np
 import time
@@ -247,8 +249,6 @@ def detect_shape(frame):
 
     #retorna um retângulo que envolve o contorno em questão
     xRect, yRect, wRect, hRect = cv2.boundingRect(allCntMaxArea)
-
-    print(f"{xRect},{yRect},{wRect},{hRect}")
 
     #desenha caixa envolvente com espessura 3
     cv2.rectangle(
