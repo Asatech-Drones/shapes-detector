@@ -13,10 +13,12 @@ from shape_detector import cap, detect_shape, destroy_windows
 # Definições de tolerância para centralização no frame
 TOLERANCE = 20
 STEP_SIZE = 0.00001
+K_ALTITUDE = 0.5
 
 # Inicializar o drone
 drone = System()
 last_move_time = 0.0
+initial_altitude = 0.0
 
 async def teste_movimento(drone):
     print("Movendo para frente...")
@@ -57,6 +59,12 @@ async def connect_drone():
     # Esperar o drone estabilizar após a decolagem
     await asyncio.sleep(10)
 
+    global initial_altitude
+    async for position in drone.telemetry.position():
+        initial_altitude = position.relative_altitude_m
+        print(f"Altitude inicial registrada: {initial_altitude:.2f} m")
+        break
+
     # Enviar primeiro comando nulo e iniciar o modo offboard
     print("Iniciando modo Offboard...")
     await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
@@ -68,96 +76,71 @@ async def connect_drone():
     global last_move_time
     last_move_time = time.time()
 
+# PID Configs
+Kp = 0.002
+Ki = 0.000
+Kd = 0.001
+
+MAX_SPEED = 0.5
+
+# Estado do PID para cada eixo
+pid_state = {
+    "x": {"prev_error": 0, "integral": 0},
+    "y": {"prev_error": 0, "integral": 0}
+}
 
 async def move_to_target(cx, cy, frame_width, frame_height):
-    """ Move o drone para centralizar a figura no frame da câmera, 
-    usando o referencial do corpo do drone. """
-    x_offset = frame_width // 2 - cx
-    y_offset = frame_height // 2 - cy
+    """ Move o drone para centralizar a figura no frame da câmera usando PID. """
 
-    print(f"Offsets: x = {x_offset}, y = {y_offset}")
+    # Erro entre o centro do frame e o centro da figura detectada
+    x_error = frame_width // 2 - cx
+    y_error = frame_height // 2 - cy
 
-    forward = 0.0
-    right = 0.0
-    moved = False
+    # Normaliza (opcional: você pode dividir pelos tamanhos do frame 
+    # para deixar o erro proporcional ao tamanho da imagem)
+    x_error = int(x_error)
+    y_error = int(y_error)
 
-    # Ajuste de tolerância: só move se deslocamento for significativo
-    if abs(x_offset) > TOLERANCE:
-        # direita no frame = esquerda no corpo
-        right = -0.5 if x_offset > 0 else 0.5  
-        moved = True
+    # Atualiza PID eixo X (direita/esquerda)
+    pid_state["x"]["integral"] += x_error
+    derivative_x = x_error - pid_state["x"]["prev_error"]
+    right_speed = (
+        Kp * x_error + Ki * pid_state["x"]["integral"] + Kd * derivative_x
+    )
+    pid_state["x"]["prev_error"] = x_error
 
-    if abs(y_offset) > TOLERANCE:
-        # baixo no frame = frente no corpo
-        forward = -0.5 if y_offset > 0 else 0.5  
-        moved = True
+    # Atualiza PID eixo Y (frente/trás)
+    pid_state["y"]["integral"] += y_error
+    derivative_y = y_error - pid_state["y"]["prev_error"]
+    forward_speed = (
+        Kp * y_error + Ki * pid_state["y"]["integral"] + Kd * derivative_y
+    )
+    pid_state["y"]["prev_error"] = y_error
 
-    if moved:
-        global last_move_time
-        if time.time() - last_move_time >= 3:
-            print(f"Movendo: forward = {forward}, right = {right}")
-            await drone.offboard.set_velocity_body(
-                VelocityBodyYawspeed(forward, right, 0.0, 0.0)
-            )
-            
-            last_move_time = time.time()
-    else:
-        # Para o drone se estiver centralizado
-        await drone.offboard.set_velocity_body(
-            VelocityBodyYawspeed(forward, right, 0.0, 0.0)
-        )
+    # Inverte sinais conforme eixo de referência do drone
+    right = -right_speed
+    forward = -forward_speed
 
-    # Retorna True se centralizado
-    return abs(x_offset) < TOLERANCE and abs(y_offset) < TOLERANCE
+    # Limita a velocidade para segurança
+    right = max(min(right, MAX_SPEED), -MAX_SPEED)
+    forward = max(min(forward, MAX_SPEED), -MAX_SPEED)
 
+    # Calcula diferença da altitude atual para a inicial
+    global initial_altitude
+    async for position in drone.telemetry.position():
+        altitude_error = initial_altitude - position.relative_altitude_m
+        break
 
-# async def move_to_target(cx, cy, frame_width, frame_height):
-#     """ Move o drone para centralizar a figura no frame da câmera. """
-#     x_offset = frame_width // 2 - cx
-#     y_offset = frame_height // 2 - cy
+    # Calcula a compensação de altitude em relação a altitude inicial
+    altitude_compensation = - (K_ALTITUDE * altitude_error)
 
-#     print(f"offsets: {x_offset}, {x_offset}")
-    
-#     # Obtém posição atual do drone
-#     async for position in drone.telemetry.position():
-#         latitude = position.latitude_deg
-#         longitude = position.longitude_deg
-#         altitude = position.absolute_altitude_m
-#         break
+    await drone.offboard.set_velocity_body(
+        VelocityBodyYawspeed(forward, right, altitude_compensation, 0.0)
+    )
 
-#     # Flag para verificar se houve movimento
-#     moved = False
-#     east = False
-#     north = False
+    # Verifica se está dentro da tolerância para centralizar
+    return abs(x_error) < TOLERANCE and abs(y_error) < TOLERANCE
 
-#     # Ajuste na posição com base no deslocamento do frame
-#     if abs(x_offset) > TOLERANCE:  
-#         if x_offset > 0:
-#             longitude += STEP_SIZE  # Mover para direita
-#         else:
-#             longitude -= STEP_SIZE  # Mover para esquerda
-#             east = True
-#         moved = True
-
-#     if abs(y_offset) > TOLERANCE:  
-#         if y_offset > 0:
-#             latitude += STEP_SIZE  # Mover para frente
-#             north = True
-#         else:
-#             latitude -= STEP_SIZE  # Mover para trás
-#         moved = True
-
-#     if moved:
-#         global last_move_time
-#         if(time.time() - last_move_time >= 5):
-        
-#             # print(f"Movendo para: {latitude}, {longitude}")
-#             print(f"Ir para: {"Leste" if east else "Oeste"} e {"Norte" if north else "Sul"}")
-#             await drone.action.goto_location(latitude, longitude, altitude, 0)
-#             last_move_time = time.time()
-
-#     # Retorna True se centralizado
-#     return abs(x_offset) < TOLERANCE and abs(y_offset) < TOLERANCE
 
 async def land_drone():
     """ Inicia o procedimento de pouso do drone. """
@@ -170,9 +153,6 @@ async def main():
 
     while True:
 
-        # await drone.offboard.set_velocity_body(
-        #     VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0)
-        # )
         success, frame = cap.read()
         if not success:
             break
@@ -186,13 +166,16 @@ async def main():
             frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-            # print(f"{cx}, {cy}, {frame_width}, {frame_height}")
-
             # Ajusta posição do drone até a figura estar centralizada
             centralizado = await move_to_target(cx, cy, frame_width, frame_height)
 
         if centralizado:
             await land_drone()
+            break
+        
+        # AQUI: Checa a altitude logo após o movimento
+        async for position in drone.telemetry.position():
+            print(f"Altitude atual: {position.relative_altitude_m:.2f} m")
             break
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
