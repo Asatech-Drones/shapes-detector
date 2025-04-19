@@ -119,7 +119,7 @@ async def move_to_target(cx, cy, frame_width, frame_height):
 
     # Inverte sinais conforme eixo de referência do drone
     right = -right_speed
-    forward = -forward_speed
+    forward = +forward_speed
 
     # Limita a velocidade para segurança
     right = max(min(right, MAX_SPEED), -MAX_SPEED)
