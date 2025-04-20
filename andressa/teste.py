@@ -1,70 +1,91 @@
+""" 
+Este módulo simula um controle de drone passando por traves coloridas (hastes).
+A lógica consiste em detectar traves em cores específicas (vermelho, azul, verde) 
+e orientar o drone a passar por elas alternando o lado (esquerda/direita) conforme a ordem definida.
+
+Funcionalidades:
+- Detecção de cores (hastes) utilizando a técnica de contornos em imagens.
+- Controle da ordem das traves a serem passadas.
+- Exibição de indicações visuais para o drone no vídeo.
+"""
 import cv2
-import numpy as np
+from mission import Mission
+from drone import Drone 
+from haste_detector import HasteDetector
 
-def process_frame(frame):
-    # Converter para HSV
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-
-    # Faixas da cor vermelha no HSV
-    lower_red1 = np.array([0, 70, 50])
-    upper_red1 = np.array([10, 255, 255])
-    lower_red2 = np.array([170, 70, 50])
-    upper_red2 = np.array([180, 255, 255])
-
-    # Máscara para vermelho
-    mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
-    mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
-    mask = cv2.bitwise_or(mask1, mask2)
-
-    # Redução de ruído
-    kernel = np.ones((5, 5), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
-
-    # Contornos
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-        if area > 200:  # Ajuste conforme necessidade
-            x, y, w, h = cv2.boundingRect(cnt)
-
-            # Análise do formato da bounding box
-            aspect_ratio = h / float(w) if w != 0 else 0
-
-            
-
-            # Considera como haste se for estreito e comprido
-            if aspect_ratio > 2.5:
-                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-                cv2.putText(frame, f"Haste ({aspect_ratio:.1f})", (x, y-10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
-    return frame, mask
-
+# define o intervalo de cores em HSV para as hastes
 def main():
+    mission = Mission(sequence=['orange', 'blue', 'orange', 'yellow'], initial_side='left')
+    drone = Drone(mission)
+    haste_detector = HasteDetector()
+    
+    # def on_mouse(event, x, y, flags, param):
+    #     if event == cv2.EVENT_LBUTTONDOWN:
+    #         hsv = cv2.cvtColor(param, cv2.COLOR_BGR2HSV)
+    #         pixel = hsv[y, x]
+    #         print(f"HSV em ({x},{y}): {pixel}")  # [H, S, V]
+
     cap = cv2.VideoCapture(0)
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
+    
+        # cv2.imshow("Clique para pegar HSV", frame)
+        # cv2.setMouseCallback("Clique para pegar HSV", on_mouse, frame)
+    
+        # Obtém a largura do frame
+        frame_width = frame.shape[1]
 
-        processed_frame, mask = process_frame(frame)
+        if mission.is_mission_completed():
+            cv2.putText(frame, "Missao Concluida!", (50, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 3)
+            cv2.imshow("Missao Slalom", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+            continue
 
-        cv2.imshow("Deteccao de Haste", processed_frame)
-        cv2.imshow("Mascara", mask)
+        target_color = mission.sequence[mission.current_index]
+        frame, detections, mask = haste_detector.detect_staves(frame, target_color, frame_width)
+
+        # Passando frame_width para a função determine_closest_haste
+        closest = haste_detector.determine_closest_haste(detections, frame_width)
+
+        if closest:
+            drone_side = drone.decide_side(frame_width, closest)
+            drone.display_instruction(frame)
+
+            if haste_detector.was_visible and len(detections) == 0:
+                print(f"Trave {mission.current_index + 1} ({target_color}) percorrida pelo {mission.current_side}")
+                mission.passed_staves.append(target_color)
+                mission.update_side()
+
+                # Atualiza status
+                haste_detector.was_visible = len(detections) > 0
+                
+            if drone_side == mission.current_side and haste_detector.was_visible and len(detections) == 0:
+                print(f"Trave {mission.current_index + 1} ({target_color}) percorrida corretamente pelo {mission.current_side}")
+                mission.passed_staves.append(target_color)
+                mission.update_side()
+
+
+        else:
+            drone.display_instruction(frame)
+            cv2.putText(frame, f"Alvo: {target_color.upper()}", (50, 90),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+        # Exibe o frame original e a máscara
+        cv2.imshow("Frame Original", frame)
+        cv2.imshow("Mascara", mask)  # Exibe a máscara gerada
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
             break
-        elif key == ord('s'):
-            # Salvar frame se necessário para debugging
-            cv2.imwrite("frame_salvo.png", frame)
-            cv2.imwrite("mascara_salva.png", mask)
-            print("Frame salvo.")
 
     cap.release()
     cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
     main()
