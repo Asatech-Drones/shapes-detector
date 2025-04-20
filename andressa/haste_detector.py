@@ -5,6 +5,15 @@ import cv2
 class HasteDetector:
     def __init__(self):
         # Intervalos de cores para detectar as hastes
+        self.kalman = cv2.KalmanFilter(4, 2)  # [x, y, dx, dy] -> [x, y]
+        self.kalman.measurementMatrix = np.array([[1, 0, 0, 0],
+                                                  [0, 1, 0, 0]], np.float32)
+        self.kalman.transitionMatrix = np.array([[1, 0, 1, 0],
+                                                 [0, 1, 0, 1],
+                                                 [0, 0, 1, 0],
+                                                 [0, 0, 0, 1]], np.float32)
+        self.kalman.processNoiseCov = np.eye(4, dtype=np.float32) * 0.0
+        self.visible_last_frame = False  # novo atributo
         self.color_ranges = {
         'red': [
             (np.array([0, 70, 50]), np.array([10, 255, 255])),
@@ -21,8 +30,21 @@ class HasteDetector:
         ],
         'green': [
             (np.array([40, 70, 70]), np.array([80, 255, 255]))
-        ]
-    }
+        ],
+        'pink_pen': [
+            (np.array([153, 50, 50]), np.array([173, 255, 255])),   # Ex: [169, 216, 151]
+            (np.array([140, 50, 50]), np.array([160, 255, 255]))    # Ex: [150, 13, 38] (pode ser ruído por S baixo)
+        ],
+        'yellow_green': [
+            (np.array([24, 100, 150]), np.array([44, 255, 255]))    # Ex: [34, 187, 234] e [49, 149, 228]
+        ],
+        'green_pen': [
+            (np.array([73, 20, 120]), np.array([93, 255, 255]))     # Ex: [83, 25, 181]
+        ],
+        'blue_pen': [
+            (np.array([110, 100, 100]), np.array([130, 255, 255]))  # Ex: [120, 218, 151]
+        ],
+            }
         self.last_detection = None  # Armazena a última detecção para comparação
         self.was_visible = False
 
@@ -55,7 +77,7 @@ class HasteDetector:
 
         for cnt in contours:
             area = cv2.contourArea(cnt)
-            if area > 350:  # área mínima
+            if area > 450:  # área mínima
                 x, y, w, h = cv2.boundingRect(cnt)
                 aspect_ratio = h / float(w) if w > 0 else 0
                 if aspect_ratio > 2.0:  # vertical e fino
@@ -100,3 +122,17 @@ class HasteDetector:
 
         # A detecção é considerada similar se a diferença nas coordenadas e tamanho for pequena
         return x_diff < tolerance and y_diff < tolerance and w_diff < tolerance and h_diff < tolerance
+    
+    def predict(self):
+        prediction = self.kalman.predict()
+        self.last_prediction = prediction
+        return prediction
+
+    def correct(self, x, y):
+        measurement = np.array([[np.float32(x)], [np.float32(y)]])
+        self.kalman.correct(measurement)
+
+    def update(self, detection):
+        if detection is not None:
+            self.correct(detection[0], detection[1])
+        return self.predict()

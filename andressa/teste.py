@@ -15,7 +15,7 @@ from haste_detector import HasteDetector
 
 # define o intervalo de cores em HSV para as hastes
 def main():
-    mission = Mission(sequence=['orange', 'blue', 'orange', 'yellow'], initial_side='left')
+    mission = Mission(sequence=['yellow_green','pink_pen','blue_pen'], initial_side='left')
     drone = Drone(mission)
     haste_detector = HasteDetector()
     
@@ -50,7 +50,31 @@ def main():
         frame, detections, mask = haste_detector.detect_staves(frame, target_color, frame_width)
 
         # Passando frame_width para a função determine_closest_haste
-        closest = haste_detector.determine_closest_haste(detections, frame_width)
+        if detections:
+            closest = haste_detector.determine_closest_haste(detections, frame_width)
+            center_x = closest['x'] + closest['w'] // 2
+            center_y = closest['y'] + closest['h'] // 2
+            haste_detector.update((center_x, center_y))
+            haste_detector.visible_last_frame = True
+        else:
+            predicted = haste_detector.update(None)
+            predicted_x, predicted_y = int(predicted[0]), int(predicted[1])
+            closest = {'x': predicted_x - 10, 'y': predicted_y - 20, 'w': 20, 'h': 40}
+
+            # se a haste foi visível no frame anterior e agora não está, consideramos como "ultrapassada"
+            if haste_detector.visible_last_frame:
+                drone_side = drone.decide_side(frame_width, closest)
+
+                if drone_side == mission.current_side:
+                    print(f"Trave {mission.current_index + 1} ({target_color}) percorrida corretamente pelo {mission.current_side}")
+                else:
+                    print(f"Trave {mission.current_index + 1} ({target_color}) percorrida pelo lado errado ({drone_side})")
+
+                mission.passed_staves.append(target_color)
+                mission.update_side()
+
+            haste_detector.visible_last_frame = False  # reset
+
 
         if closest:
             drone_side = drone.decide_side(frame_width, closest)
