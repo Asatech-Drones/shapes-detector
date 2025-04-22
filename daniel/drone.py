@@ -2,6 +2,7 @@ import asyncio
 from mavsdk import System
 from mavsdk.offboard import VelocityBodyYawspeed
 import time
+import math
 
 import os
 os.environ["QT_QPA_PLATFORM"] = "xcb"
@@ -147,36 +148,112 @@ async def land_drone():
     print("Centralizado! Iniciando pouso...")
     await drone.action.land()
 
-async def main():
-    # """ Fluxo principal do sistema de navegação autônoma. """
-    await connect_drone()
+async def scan_for_target_spiral():
+    """Movimenta o drone em um padrão de espiral até encontrar o alvo."""
+    print("Iniciando varredura em espiral...")
+
+    angular_speed = 0.5  # velocidade angular (radianos/s)
+    radius_increment = 0.05  # incremento do raio por ciclo (em metros)
+    max_radius = 2.0  # raio máximo da espiral
+    current_radius = 0.2  # começa com um pequeno raio
+    angle = 0.0  # ângulo inicial
+    step_time = 0.5  # tempo de cada passo da espiral
+
+    while current_radius <= max_radius:
+        # Converte coordenadas polares (raio, ângulo) para cartesianas (forward, right)
+        forward = current_radius * math.cos(angle)
+        right = current_radius * math.sin(angle)
+
+        print(f"Movendo em espiral: forward={forward:.2f}, right={right:.2f}, raio={current_radius:.2f}, ângulo={math.degrees(angle):.2f}°")
+
+        await drone.offboard.set_velocity_body(
+            VelocityBodyYawspeed(forward, right, 0.0, 0.0)
+        )
+
+        start_time = time.time()
+        while time.time() - start_time < step_time:
+            success, frame = cap.read()
+            if not success:
+                break
+
+            xRect, yRect, wRect, hRect = detect_shape(frame)
+
+            if xRect != 0 and yRect != 0:
+                print("Alvo detectado durante varredura espiral!")
+                return (xRect, yRect, wRect, hRect, frame)
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                return None
+
+        # Atualiza ângulo e raio para o próximo ponto da espiral
+        angle += angular_speed * step_time
+        current_radius += radius_increment * step_time
+
+    print("Alvo não encontrado após varredura completa.")
+    return None
+
+async def scan_for_target_zigzag():
+    """Movimenta o drone em um padrão de varredura até encontrar o alvo."""
+    print("Iniciando varredura...")
+
+    # frente, direita, trás, esquerda
+    directions = [(0.3, 0.0), (0.0, 0.3), (-0.3, 0.0), (0.0, -0.3)]
+    # segundos
+    step_duration = 3  
 
     while True:
+        for forward, right in directions:
+            print(f"Movendo: forward={forward}, right={right}")
+            await drone.offboard.set_velocity_body(VelocityBodyYawspeed(forward, right, 0.0, 0.0))
 
-        success, frame = cap.read()
-        if not success:
-            break
-        xRect, yRect, wRect, hRect = detect_shape(frame)
+            start_time = time.time()
+            while time.time() - start_time < step_duration:
+                success, frame = cap.read()
+                if not success:
+                    break
 
-        centralizado = False
-        if(xRect != 0 and yRect != 0):
-            cx = xRect + wRect // 2
-            cy = yRect + hRect // 2
+                xRect, yRect, wRect, hRect = detect_shape(frame)
 
-            frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                if xRect != 0 and yRect != 0:
+                    print("Alvo detectado durante varredura!")
+                    return (xRect, yRect, wRect, hRect, frame)
 
-            # Ajusta posição do drone até a figura estar centralizada
-            centralizado = await move_to_target(cx, cy, frame_width, frame_height)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    # Interrompe a varredura
+                    return None  
+
+    return None
+
+async def scan_for_target():
+    await scan_for_target_spiral()
+
+async def main():
+    await connect_drone()
+
+    result = await scan_for_target()
+    if result is None:
+        print("Nenhum alvo detectado durante a varredura. Abortando.")
+        return
+
+    xRect, yRect, wRect, hRect, frame = result
+
+    while True:
+        cx = xRect + wRect // 2
+        cy = yRect + hRect // 2
+        frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        centralizado = await move_to_target(cx, cy, frame_width, frame_height)
 
         if centralizado:
             await land_drone()
             break
-        
-        # AQUI: Checa a altitude logo após o movimento
-        async for position in drone.telemetry.position():
-            print(f"Altitude atual: {position.relative_altitude_m:.2f} m")
+
+        success, frame = cap.read()
+        if not success:
             break
+
+        xRect, yRect, wRect, hRect = detect_shape(frame)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
