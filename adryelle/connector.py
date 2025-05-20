@@ -57,26 +57,44 @@ class MAVSDKConnector:
 
     async def conectar(self):
         """Conecta ao drone via MAVSDK"""
-        print(f"Conectando ao servidor MAVSDK em {self.mavsdk_server_address}:{self.mavsdk_server_port}...")
-        self.drone = System(mavsdk_server_address=self.mavsdk_server_address, port=self.mavsdk_server_port)
+        print("Conectando diretamente ao simulador PX4 no Docker...")
 
-        # Não precisamos especificar system_address, pois o mavsdk_server já está conectado
-        # ao simulador na porta UDP 18750
-        await self.drone.connect()
+        try:
+            # Usar conexão direta
+            self.drone = System()
+            await self.drone.connect(system_address="udp://:14540")
 
-        print("Aguardando conexão...")
-        async for state in self.drone.core.connection_state():
-            if state.is_connected:
-                print("Drone conectado!")
-                break
+            print("Aguardando conexão com timeout de 30 segundos...")
+            for i in range(30):
+                print(f"Tentativa {i + 1}/30...")
+                try:
+                    state = await self.drone.core.connection_state()
+                    if state.is_connected:
+                        print("Drone conectado!")
+                        break
+                except Exception as e:
+                    print(f"Erro ao verificar estado da conexão: {e}")
 
-        # Iniciar thread de telemetria
-        self.running = True
-        self.thread_telemetria = threading.Thread(target=lambda: asyncio.run(self._loop_telemetria()))
-        self.thread_telemetria.daemon = True
-        self.thread_telemetria.start()
+                await asyncio.sleep(1)
+            else:
+                print("Não foi possível conectar ao drone após 30 segundos.")
+                return False
 
-        return True
+            # Iniciar thread de telemetria
+            self.running = True
+            self.thread_telemetria = threading.Thread(target=lambda: asyncio.run(self._loop_telemetria()))
+            self.thread_telemetria.daemon = True
+            self.thread_telemetria.start()
+
+            return True
+
+        except Exception as e:
+            print(f"Erro ao conectar ao drone: {e}")
+            return False
+
+        except Exception as e:
+            print(f"Erro ao conectar ao drone: {e}")
+            return False
 
     async def _loop_telemetria(self):
         """Loop para atualizar telemetria do drone"""
