@@ -612,6 +612,7 @@ async def executar_missao(mavsdk_server_address="localhost", mavsdk_server_port=
                         f"Estado: {estado_missao} | Pos: ({status['posicao'][0]:.1f}, {status['posicao'][1]:.1f}, {status['posicao'][2]:.1f})",
                         (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2
                     )
+                    
                     cv2.imshow("Detecção de Hastes", frame)
 
                 # Pequena pausa para reduzir uso de CPU
@@ -643,6 +644,8 @@ if __name__ == "__main__":
         mavsdk_server_address = sys.argv[1]
     if len(sys.argv) > 2:
         mavsdk_server_port = int(sys.argv[2])
+
+    cv2.namedWindow('Detecção de Hastes', cv2.WINDOW_NORMAL)
 
     # Executar a missão
     asyncio.run(executar_missao(mavsdk_server_address, mavsdk_server_port))
